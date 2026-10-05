@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "id": "maurice.daily-verse",
+  "name": "Daily Verse",
+  "version": "0.1.0",
+  "author": "maurice",
+  "license": "MIT",
+  "description": "Random daily Bible verse with Reformed/Lutheran commentary (Matthew Henry first, then JFB).",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Daily Verse",
+    "description": "Daily Bible verse with commentary popup",
+    "category": "Faith",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "translation": "BSB",
+      "commentary": "matthew-henry"
+    },
+    "schema": [
+      {
+        "key": "translation",
+        "type": "string",
+        "label": "Translation: BSB, eng_web (WEB), eng_kjv (KJV), eng_gnv (Geneva 1599), eng_asv (ASV), eng_ylt (YLT)"
+      },
+      {
+        "key": "commentary",
+        "type": "string",
+        "label": "Preferred commentary: matthew-henry, jamieson-fausset-brown, john-gill, john-calvin, keil-delitzsch"
+      }
+    ]
+  },
+  "omarchy": {
+    "commentaries": [
+      "matthew-henry",
+      "jamieson-fausset-brown",
+      "john-gill",
+      "john-calvin",
+      "keil-delitzsch"
+    ],
+    "commentaryPolicy": "Reformed/Lutheran and adjacent only. Excludes adam-clarke and tyndale.",
+    "verseApi": "https://bible.helloao.org",
+    "fallbackOrder": [
+      "matthew-henry",
+      "jamieson-fausset-brown",
+      "john-gill",
+      "john-calvin",
+      "keil-delitzsch"
+    ]
+  }
+}
