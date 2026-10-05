@@ -1,5 +1,7 @@
 # Daily Verse
 
+![Daily Verse panel](preview.png)
+
 A daily Bible verse in the [Omarchy](https://omarchy.org) bar, with a
 Reformed / Lutheran commentary. Click the bar icon to read the verse and its
 commentary.
