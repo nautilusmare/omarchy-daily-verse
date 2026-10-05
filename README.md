@@ -20,8 +20,10 @@ omarchy plugin add https://github.com/nautilusmare/omarchy-daily-verse.git --ena
 - Middle-click the bar icon, or press `↻ New verse`, for a new random verse.
 - **Translation** and **Commentary** dropdowns in the panel pick sources directly. Choices persist.
 - `⧉ Copy` copies `REF (Translation)\nverse text` to your clipboard via `wl-copy`.
-- Long commentaries start collapsed at ~600 characters. Click the commentary text (or `Show more ▾`) to expand it, and click again to minimize.
-- When the commentary overflows the panel, a slim scrollbar appears on the right. Click the strip to jump, or drag the pill to scroll.
+- The panel shows a short commentary summary (cut at a sentence boundary, ~240 characters).
+- `Show more ▾` opens the full commentary in a height-capped reading box (~300px) with its own slim scrollbar, so the panel grows by a fixed amount rather than by the length of the text. Clicking the text — or `Show less ▴` — collapses it back to the summary.
+- `Read full commentary ↗` opens the complete chapter commentary in your browser on [Bible Hub](https://biblehub.com), which renders all five sources with readable typography.
+- When the panel itself overflows, a slim scrollbar appears on the right. Click the strip to jump, or drag the pill to scroll.
 - `omarchy-shell shell summon maurice.daily-verse '{}'` opens the panel;
   `omarchy-shell shell hide maurice.daily-verse` closes it.
 

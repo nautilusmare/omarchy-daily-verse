@@ -141,6 +141,56 @@ function commentaryUrl(id, book, chapter) {
   return API_BASE + "/c/" + id + "/" + book + "/" + chapter + ".json";
 }
 
+// --- full commentary in the browser ---
+// bible.helloao.org is API-only (its site is just docs, no reader page), so
+// "read the whole commentary" links out to Bible Hub, which renders all five
+// public-domain commentaries with readable typography. Every slug and book
+// path below was verified to return HTTP 200.
+var WEB_COMMENTARY_SLUG = {
+  "matthew-henry": "mhc",
+  "jamieson-fausset-brown": "jfb",
+  "john-gill": "gill",
+  "john-calvin": "calvin",
+  "keil-delitzsch": "kad"
+};
+
+// OSIS -> Bible Hub book slug. Numbered books use an underscore, not a hyphen
+// (1_corinthians, not 1-corinthians) -- verified against the live site.
+var WEB_BOOK_SLUG = {
+  GEN: "genesis", EXO: "exodus", DEU: "deuteronomy", JOS: "joshua",
+  PSA: "psalms", ISA: "isaiah", JER: "jeremiah", LAM: "lamentations",
+  HAB: "habakkuk", ZEP: "zephaniah", PRO: "proverbs", MIC: "micah",
+  MAT: "matthew", MRK: "mark", LUK: "luke", JHN: "john", ACT: "acts",
+  ROM: "romans", "1CO": "1_corinthians", GAL: "galatians", EPH: "ephesians",
+  PHP: "philippians", HEB: "hebrews"
+};
+
+// Empty string when the commentary or book is unknown, so the panel can hide
+// the button instead of opening a dead link.
+function webCommentaryUrl(id, book, chapter) {
+  var slug = WEB_COMMENTARY_SLUG[id];
+  var b = WEB_BOOK_SLUG[String(book || "").toUpperCase()];
+  if (!slug || !b) return "";
+  return "https://biblehub.com/commentaries/" + slug + "/" + b + "/" + chapter + ".htm";
+}
+
+// In-panel preview: collapse to about `limit` characters, preferring to stop
+// at a sentence boundary so it reads as a finished thought rather than a
+// mid-sentence cut. Whitespace is flattened to keep the panel compact.
+function summarize(text, limit) {
+  var s = String(text || "").replace(/\s+/g, " ").trim();
+  var max = Number(limit) || 0;
+  if (max <= 0 || s.length <= max) return s;
+  var slice = s.slice(0, max + 1);
+  var sentence = slice.match(/^(.*[.!?](?:["'\u2019\u201d)\]])?)\s/);
+  if (sentence && sentence[1].length >= Math.floor(max * 0.4)) {
+    return sentence[1] + "\u2026";
+  }
+  var sp = slice.lastIndexOf(" ");
+  if (sp > 0) return slice.slice(0, sp) + "\u2026";
+  return slice + "\u2026";
+}
+
 // Single-quote shell escaping for wl-copy.
 function shellEscape(s) {
   return "'" + String(s).split("'").join("'\\''") + "'";

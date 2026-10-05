@@ -77,9 +77,17 @@ Panel {
   property string loadedDayKey: ""
   property string loadedTranslation: ""
   property string loadedCommentaryPref: ""
-  // Long commentaries start collapsed; expansion is per-view, reset on change.
+  // Collapsed shows a short summary; expanded opens a height-capped reading box
+// so the panel grows by a fixed amount instead of by the commentary length.
   property bool commentaryExpanded: false
-  readonly property int commentaryCollapseAt: 600
+  readonly property int commentarySummaryAt: 240
+  readonly property int commentaryReadHeight: Style.space(300)
+  readonly property int commentaryScrollWidth: Style.space(6)
+  readonly property bool commentaryTruncated: root.commentaryText !== ""
+    && Model.summarize(root.commentaryText, root.commentarySummaryAt).length < root.commentaryText.length
+  readonly property string webCommentaryUrl: root.commentaryUsed !== "" && root.current
+    ? Model.webCommentaryUrl(root.commentaryUsed, root.current.book, root.current.chapter)
+    : ""
   readonly property int scrollbarWidth: Style.space(6)
 
   readonly property string tooltipText: root.verseText !== "" ? root.verseRef + " — " + root.verseText.slice(0, 80) : "Daily verse"
@@ -152,10 +160,10 @@ Panel {
     root.verseRef = Model.shortRef(v)
     root.loadedTranslation = root.translation
     root.loadedCommentaryPref = root.commentaryPref
-    root.commentaryExpanded = false
     root.verseText = ""
     root.commentaryText = ""
     root.commentaryUsed = ""
+    root.commentaryExpanded = false
     root.errorText = ""
     root.chain = Model.fallbackChain(root.commentaryPref).filter(function(id) {
       return Model.commentaryAvailable(id, v.book)
@@ -196,6 +204,23 @@ Panel {
     if (root.verseText === "" || !root.bar) return
     root.bar.run("wl-copy " + Model.copyText(root.verseRef, root.verseText, root.translation))
     copyFeedback.restart()
+  }
+
+  // Toggle the in-app reading box. Collapsing resets both scrollers so the
+  // next expand starts at the top of the commentary.
+  function toggleCommentary() {
+    root.commentaryExpanded = !root.commentaryExpanded
+    if (!root.commentaryExpanded) {
+      commentaryFlick.contentY = 0
+      scroller.contentY = 0
+    }
+  }
+
+  // Full commentary opens in the browser (Bible Hub) for good reading
+  // typography instead of scrolling through it in the panel.
+  function openWebCommentary() {
+    if (root.webCommentaryUrl === "" || !root.bar) return
+    root.bar.run("xdg-open " + Model.shellEscape(root.webCommentaryUrl))
   }
 
   function loadDaily() {
@@ -363,10 +388,13 @@ Panel {
         id: scroller
         anchors.fill: parent
         contentWidth: width
-        contentHeight: body.implicitHeight
+        // Math.max keeps contentHeight from dipping a hair under the viewport, which
+        // is what used to make the panel scrollbar flash on with nothing to
+        // scroll (contentHeight ended up 0.2px larger than height).
+        contentHeight: Math.max(body.implicitHeight, height)
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        interactive: contentHeight > height
+        interactive: scroller.contentHeight > scroller.height + 1
 
         Column {
           id: body
@@ -430,33 +458,131 @@ Panel {
             text: root.commentaryUsed !== "" ? "Commentary · " + Model.commentaryName(root.commentaryUsed) : ""
           }
 
-          Text {
+          // One always-visible wrapper owns the commentary height. The
+          // enclosing Column measures its children and skips invisible ones
+          // without re-measuring when they reappear, so toggling `visible` on a
+          // sibling left the panel sized for the collapsed text while the tall
+          // reading box was clipped. A single visible box whose implicitHeight
+          // merely changes sidesteps that.
+          Item {
+            id: commentaryReader
             width: parent.width
-            visible: root.commentaryText !== ""
-            text: root.commentaryExpanded || root.commentaryText.length <= root.commentaryCollapseAt
-              ? root.commentaryText
-              : root.commentaryText.slice(0, root.commentaryCollapseAt).trim() + "…"
-            color: root.contentForeground
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.body
-            wrapMode: Text.WordWrap
-            lineHeight: 1.35
-            opacity: 0.92
+            implicitHeight: root.commentaryExpanded
+              ? Math.min(commentaryFull.implicitHeight, root.commentaryReadHeight)
+              : commentarySummary.implicitHeight
+            height: implicitHeight
+            clip: true
 
-            // Clicking the commentary toggles the collapsed/expanded preview
-            // (long entries start collapsed; click to expand or minimize).
+            // Collapsed: short summary cut at a sentence boundary so it reads
+            // as a finished thought.
+            Text {
+              id: commentarySummary
+              width: parent.width
+              visible: !root.commentaryExpanded
+              text: root.commentaryText !== ""
+                ? Model.summarize(root.commentaryText, root.commentarySummaryAt)
+                : ""
+              color: root.contentForeground
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.body
+              wrapMode: Text.WordWrap
+              lineHeight: 1.35
+              opacity: 0.92
+            }
+
+            // Expanded: capped reading box with its own scrollbar, so the panel
+            // grows by a fixed amount instead of by the commentary length.
+            Flickable {
+              id: commentaryFlick
+              anchors.fill: parent
+              visible: root.commentaryExpanded
+              contentWidth: width
+              contentHeight: commentaryFull.implicitHeight
+              boundsBehavior: Flickable.StopAtBounds
+              interactive: commentaryFull.implicitHeight > height
+
+              Text {
+                id: commentaryFull
+                // Right gutter keeps the text clear of the inner scrollbar.
+                width: commentaryFlick.width - root.commentaryScrollWidth - Style.space(4)
+                text: root.commentaryText
+                color: root.contentForeground
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.body
+                wrapMode: Text.WordWrap
+                lineHeight: 1.35
+                opacity: 0.92
+              }
+            }
+
+            // Clicking the expanded text collapses back to the summary.
             TapHandler {
-              enabled: root.commentaryText.length > root.commentaryCollapseAt
+              enabled: root.commentaryExpanded
+              onTapped: root.toggleCommentary()
               cursorShape: Qt.PointingHandCursor
-              onTapped: root.commentaryExpanded = !root.commentaryExpanded
+            }
+
+            // Slim inner scrollbar, mirroring the panel's own.
+            Item {
+              id: commentaryScroll
+              anchors.top: parent.top
+              anchors.bottom: parent.bottom
+              anchors.right: parent.right
+              width: root.commentaryScrollWidth
+              visible: root.commentaryExpanded && commentaryFlick.contentHeight > commentaryFlick.height + 1
+              opacity: commentaryScrollMouse.containsMouse || commentaryScrollMouse.pressed ? 1.0 : 0.85
+
+              Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
+              function jumpTo(y) {
+                var trackH = commentaryScroll.height
+                var knobH = Math.max(Style.space(24), commentaryFlick.visibleArea.heightRatio * trackH)
+                var maxY = trackH - knobH
+                var frac = maxY > 0 ? Math.min(1, Math.max(0, (y - knobH / 2) / maxY)) : 0
+                commentaryFlick.contentY = frac * (commentaryFlick.contentHeight - commentaryFlick.height)
+              }
+
+              Rectangle {
+                width: parent.width
+                height: Math.max(Style.space(24), commentaryFlick.visibleArea.heightRatio * commentaryScroll.height)
+                y: commentaryFlick.visibleArea.yPosition * commentaryScroll.height
+                radius: height / 2
+                color: commentaryScrollMouse.pressed
+                  ? Color.accent
+                  : Util.alpha(root.contentForeground, commentaryScrollMouse.containsMouse ? 0.6 : 0.3)
+              }
+
+              MouseArea {
+                id: commentaryScrollMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                onPressed: function(e) { commentaryScroll.jumpTo(e.y) }
+                onPositionChanged: function(e) { if (commentaryScrollMouse.pressed) commentaryScroll.jumpTo(e.y) }
+              }
             }
           }
 
-          Button {
-            visible: root.commentaryText.length > root.commentaryCollapseAt
-            text: root.commentaryExpanded ? "Show less ▴" : "Show more ▾"
-            focusable: true
-            onClicked: root.commentaryExpanded = !root.commentaryExpanded
+          Flow {
+            width: parent.width
+            spacing: Style.space(8)
+
+            Button {
+              visible: root.commentaryText !== "" && (root.commentaryTruncated || root.commentaryExpanded)
+              text: root.commentaryExpanded ? "Show less ▴" : "Show more ▾"
+              tooltipText: root.commentaryExpanded ? "Collapse to the short summary" : "Read the full commentary here"
+              bordered: true
+              focusable: true
+              onClicked: root.toggleCommentary()
+            }
+
+            Button {
+              visible: root.commentaryText !== "" && root.webCommentaryUrl !== ""
+              text: "Read full commentary ↗"
+              tooltipText: "Open the full commentary in your browser"
+              bordered: true
+              focusable: true
+              onClicked: root.openWebCommentary()
+            }
           }
 
           Text {
@@ -472,7 +598,7 @@ Panel {
 
           Text {
             width: parent.width
-            text: Model.translationLabel(root.translation) + " via bible.helloao.org · Public-domain commentary"
+            text: Model.translationLabel(root.translation) + " via bible.helloao.org · Full commentary on Bible Hub"
             color: root.contentForeground
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.caption
@@ -524,6 +650,14 @@ Panel {
               onClicked: root.copyVerse()
             }
           }
+
+          // The Flow above ends exactly at the Column's implicitHeight, so the
+          // bordered buttons' stroke paints past it and the Flickable's clip
+          // shaves their bottom border. Mirrors the 3px left/right inset.
+          Item {
+            width: 1
+            height: Style.space(3)
+          }
         }
       }
 
@@ -537,7 +671,10 @@ Panel {
         anchors.bottom: parent.bottom
         anchors.right: parent.right
         width: root.scrollbarWidth
-        visible: scroller.contentHeight > scroller.height
+        // Only show when the panel genuinely overflows by more than a pixel; a bare
+        // sub-pixel difference rendered a full-height scrollbar that did
+        // nothing. The inner commentary box has its own scrollbar for long text.
+        visible: scroller.contentHeight > scroller.height + 1
         opacity: scrollMouse.containsMouse || scrollMouse.pressed ? 1.0 : 0.9
 
         Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
@@ -549,6 +686,9 @@ Panel {
           var frac = maxY > 0 ? Math.min(1, Math.max(0, (y - knobH / 2) / maxY)) : 0
           scroller.contentY = frac * (scroller.contentHeight - scroller.height)
         }
+
+
+
 
         Rectangle {
           id: scrollKnob
