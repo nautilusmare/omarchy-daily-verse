@@ -1,8 +1,9 @@
 // Pure logic for the daily-verse plugin. Qt-free so it stays testable under
 // node (functions + var only; no ES modules, no arrow functions).
-// Commentary policy: Reformed / Lutheran / adjacent ONLY.
-// Preferred order: Matthew Henry -> JFB -> Gill -> Calvin -> Keil-Delitzsch.
-// Never query adam-clarke or tyndale.
+// Commentary policy: Reformed / Lutheran / adjacent first, with Tyndale Open
+// Study Notes as a modern, concise final fallback the user may also pick
+// directly. Never query adam-clarke.
+// Preferred order: Matthew Henry -> JFB -> Gill -> Calvin -> Keil-Delitzsch -> Tyndale.
 
 var API_BASE = "https://bible.helloao.org/api";
 
@@ -47,12 +48,15 @@ function translationOptions() {
 }
 
 // Order matters: MH first per user preference, then JFB for coverage.
+// Tyndale sits last: it is modern and not Reformed, so it only surfaces when
+// every Reformed source above it misses the verse.
 var COMMENTARY_ORDER = [
   "matthew-henry",
   "jamieson-fausset-brown",
   "john-gill",
   "john-calvin",
-  "keil-delitzsch"
+  "keil-delitzsch",
+  "tyndale"
 ];
 
 var COMMENTARY_NAMES = {
@@ -60,7 +64,8 @@ var COMMENTARY_NAMES = {
   "jamieson-fausset-brown": "Jamieson-Fausset-Brown",
   "john-gill": "John Gill",
   "john-calvin": "John Calvin",
-  "keil-delitzsch": "Keil & Delitzsch"
+  "keil-delitzsch": "Keil & Delitzsch",
+  "tyndale": "Tyndale Open Study Notes"
 };
 
 // Short labels for the in-panel switcher button.
@@ -69,7 +74,8 @@ var COMMENTARY_SHORT = {
   "jamieson-fausset-brown": "JFB",
   "john-gill": "Gill",
   "john-calvin": "Calvin",
-  "keil-delitzsch": "K&D"
+  "keil-delitzsch": "K&D",
+  "tyndale": "Tyndale"
 };
 
 function commentaryName(id) {
@@ -91,6 +97,17 @@ function commentaryOptions() {
   var out = [];
   for (var i = 0; i < COMMENTARY_ORDER.length; i++) {
     out.push({ value: COMMENTARY_ORDER[i], label: commentaryName(COMMENTARY_ORDER[i]) });
+  }
+  return out;
+}
+
+// Same list with the short labels, for the compact in-panel chip. The full
+// source name lives in the panel's commentary section header, so the chip can
+// stay narrow without losing the information.
+function commentaryOptionsShort() {
+  var out = [];
+  for (var i = 0; i < COMMENTARY_ORDER.length; i++) {
+    out.push({ value: COMMENTARY_ORDER[i], label: commentaryShort(COMMENTARY_ORDER[i]) });
   }
   return out;
 }
@@ -165,13 +182,29 @@ var WEB_BOOK_SLUG = {
   PHP: "philippians", HEB: "hebrews"
 };
 
+// Bible Hub does not carry Tyndale Open Study Notes, so that source points at
+// STEPBible's TNotes module instead. STEPBible has its own short book codes
+// (Ps, not Psalms; 1Cor, not 1_corinthians) -- each verified to resolve.
+var STEPBIBLE_BOOK = {
+  GEN: "Gen", EXO: "Exod", DEU: "Deut", JOS: "Josh", PSA: "Ps", ISA: "Isa",
+  JER: "Jer", LAM: "Lam", HAB: "Hab", ZEP: "Zeph", PRO: "Prov", MIC: "Mic",
+  MAT: "Matt", MRK: "Mark", LUK: "Luke", JHN: "John", ACT: "Acts", ROM: "Rom",
+  "1CO": "1Cor", GAL: "Gal", EPH: "Eph", PHP: "Phil", HEB: "Heb"
+};
+
 // Empty string when the commentary or book is unknown, so the panel can hide
 // the button instead of opening a dead link.
 function webCommentaryUrl(id, book, chapter) {
+  var b = String(book || "").toUpperCase();
+  if (id === "tyndale") {
+    var sb = STEPBIBLE_BOOK[b];
+    if (!sb) return "";
+    return "https://www.stepbible.org/?q=version=TNotes|reference=" + sb + "." + chapter;
+  }
   var slug = WEB_COMMENTARY_SLUG[id];
-  var b = WEB_BOOK_SLUG[String(book || "").toUpperCase()];
-  if (!slug || !b) return "";
-  return "https://biblehub.com/commentaries/" + slug + "/" + b + "/" + chapter + ".htm";
+  var bh = WEB_BOOK_SLUG[b];
+  if (!slug || !bh) return "";
+  return "https://biblehub.com/commentaries/" + slug + "/" + bh + "/" + chapter + ".htm";
 }
 
 // In-panel preview: collapse to about `limit` characters, preferring to stop
@@ -184,7 +217,10 @@ function summarize(text, limit) {
   var slice = s.slice(0, max + 1);
   var sentence = slice.match(/^(.*[.!?](?:["'\u2019\u201d)\]])?)\s/);
   if (sentence && sentence[1].length >= Math.floor(max * 0.4)) {
-    return sentence[1] + "\u2026";
+    // Already a finished sentence: appending an ellipsis here would give the
+    // four-dot run "word....", so stop cleanly. The Show more button still
+    // signals that more follows.
+    return sentence[1];
   }
   var sp = slice.lastIndexOf(" ");
   if (sp > 0) return slice.slice(0, sp) + "\u2026";
@@ -261,9 +297,16 @@ function findVerseText(payload, verseNum) {
   return "";
 }
 
+// Tyndale Open Study Notes prefix every entry with its own verse reference
+// ("3:1 John links ..."), which duplicates the reference the panel already
+// shows in its header. Anchored to the start so it can never eat real prose.
+function stripVerseRefPrefix(text) {
+  return String(text || "").replace(/^\d+\s*:\s*\d+\s+/, "");
+}
+
 // Commentary chapters group verses: entries like [{number:1,...},{number:22,...}]
 // means entry 1 covers 1-21. Return the entry covering verseNum. Full text is
-// returned; the panel collapses long entries itself with Show more/less.
+// returned; the panel shows a summary and a capped reading box itself.
 function findCommentary(payload, verseNum) {
   try {
     var content = payload.chapter.content;
@@ -276,7 +319,7 @@ function findCommentary(payload, verseNum) {
     }
     if (!best) return "";
     var parts = best.content || [];
-    return parts.join("\n").trim();
+    return stripVerseRefPrefix(parts.join("\n").trim());
   } catch (e) {
     return "";
   }

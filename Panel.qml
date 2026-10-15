@@ -82,6 +82,9 @@ Panel {
   property bool commentaryExpanded: false
   readonly property int commentarySummaryAt: 240
   readonly property int commentaryReadHeight: Style.space(300)
+  // ~60 characters per line at body size, so the expanded commentary reads
+  // like prose instead of running the full panel width.
+  readonly property int commentaryMeasure: Style.space(350)
   readonly property int commentaryScrollWidth: Style.space(6)
   readonly property bool commentaryTruncated: root.commentaryText !== ""
     && Model.summarize(root.commentaryText, root.commentarySummaryAt).length < root.commentaryText.length
@@ -406,32 +409,33 @@ Panel {
           width: parent.width - 6 - root.scrollbarWidth
           spacing: Style.space(6)
 
-          // ---- Scripture: reference + translation tag ----
+          // ---- Scripture: reference (quiet kicker) + verse (hero) ----
           Row {
             width: parent.width
-            spacing: Style.space(4)
+            spacing: Style.space(6)
 
             Text {
               text: root.verseRef
-              color: root.contentForeground
+              color: Color.accent
               font.family: root.contentFontFamily
-              font.pixelSize: Style.font.title
+              font.pixelSize: Style.font.caption
               font.bold: true
+              font.letterSpacing: 1.0
               wrapMode: Text.WordWrap
             }
 
             Text {
               anchors.baseline: parent.children[0].baseline
-              text: "· " + Model.translationLabel(root.translation)
+              text: Model.translationLabel(root.translation)
               color: root.contentForeground
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
-              opacity: 0.65
+              opacity: 0.7
               wrapMode: Text.WordWrap
             }
           }
 
-// ---- Scripture: italic blockquote (no vertical line) ----
+          // ---- Scripture: italic blockquote (no vertical line) ----
           Text {
             id: verseTextBody
             width: parent.width
@@ -440,11 +444,11 @@ Panel {
             text: root.loading && root.verseText === "" ? "Loading…" : (root.verseText !== "" ? "\u201C" + root.verseText + "\u201D" : (root.errorText !== "" ? root.errorText : "No verse loaded."))
             color: root.contentForeground
             font.family: root.contentFontFamily
-            font.pixelSize: Style.font.body + 5
+            font.pixelSize: Style.font.heading
             font.italic: true
             wrapMode: Text.WordWrap
-            lineHeight: 1.10
-            opacity: 0.88
+            lineHeight: 1.20
+            opacity: 0.92
           }
 
           PanelSeparator {
@@ -467,11 +471,17 @@ Panel {
           Item {
             id: commentaryReader
             width: parent.width
-            implicitHeight: root.commentaryExpanded
+            // height drives the animation; implicitHeight follows it so the
+            // enclosing Column (which sizes from implicitHeight) moves with the
+            // animation instead of jumping. The two are bound one way only, so
+            // there is no loop.
+            height: root.commentaryExpanded
               ? Math.min(commentaryFull.implicitHeight, root.commentaryReadHeight)
               : commentarySummary.implicitHeight
-            height: implicitHeight
+            implicitHeight: height
             clip: true
+
+            Behavior on height { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
             // Collapsed: short summary cut at a sentence boundary so it reads
             // as a finished thought.
@@ -486,7 +496,7 @@ Panel {
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.body
               wrapMode: Text.WordWrap
-              lineHeight: 1.35
+              lineHeight: 1.45
               opacity: 0.92
             }
 
@@ -504,13 +514,14 @@ Panel {
               Text {
                 id: commentaryFull
                 // Right gutter keeps the text clear of the inner scrollbar.
-                width: commentaryFlick.width - root.commentaryScrollWidth - Style.space(4)
+                width: Math.min(commentaryFlick.width - root.commentaryScrollWidth - Style.space(4),
+                  root.commentaryMeasure)
                 text: root.commentaryText
                 color: root.contentForeground
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.body
                 wrapMode: Text.WordWrap
-                lineHeight: 1.35
+                lineHeight: 1.45
                 opacity: 0.92
               }
             }
@@ -588,7 +599,7 @@ Panel {
           Text {
             width: parent.width
             visible: !root.loading && root.commentaryText === "" && root.verseText !== ""
-            text: "No Reformed commentary found for this verse in the bundled sources (tried MH → JFB → Gill → Calvin → Keil-Delitzsch)."
+            text: "No commentary found for this verse (tried MH → JFB → Gill → Calvin → K&D → Tyndale)."
             color: root.contentForeground
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.caption
@@ -598,24 +609,31 @@ Panel {
 
           Text {
             width: parent.width
-            text: Model.translationLabel(root.translation) + " via bible.helloao.org · Full commentary on Bible Hub"
+            text: Model.translationLabel(root.translation) + " · bible.helloao.org · full commentary on Bible Hub · public-domain sources, Tyndale OSN CC BY-SA 4.0"
             color: root.contentForeground
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.caption
             wrapMode: Text.WordWrap
-            opacity: 0.6
+            opacity: 0.75
           }
 
-          // ---- Sources: pick translation & commentary directly ----
-          // Full-width stacked: immune to font-scale clipping.
-          Column {
+          // ---- Sources: compact inline chips ----
+          PanelSectionHeader {
+            width: parent.width
+            text: "Sources"
+          }
+
+          // Two half-width chips side by side. showLabel:false turns the shell
+          // Dropdown trigger into a chip; focus, hover and the popup still come
+          // from the shell component, so no interaction is lost.
+          Flow {
             width: parent.width
             spacing: Style.space(6)
 
             Dropdown {
               id: translationDrop
-              width: parent.width
-              label: "Translation"
+              width: Math.floor((parent.width - Style.space(6)) / 2)
+              showLabel: false
               value: root.translation
               options: Model.translationOptions()
               onChanged: function(v) { root.setTranslation(v) }
@@ -623,10 +641,10 @@ Panel {
 
             Dropdown {
               id: commentaryDrop
-              width: parent.width
-              label: "Commentary"
+              width: Math.floor((parent.width - Style.space(6)) / 2)
+              showLabel: false
               value: root.commentaryUsed !== "" ? root.commentaryUsed : root.commentaryPref
-              options: Model.commentaryOptions()
+              options: Model.commentaryOptionsShort()
               onChanged: function(v) { root.setCommentary(v) }
             }
           }
