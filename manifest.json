@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "maurice.daily-verse",
   "name": "Daily Verse",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "maurice",
   "license": "MIT",
-  "description": "Random daily Bible verse with Reformed/Lutheran commentary (Matthew Henry first, then JFB).",
+  "description": "Daily Bible verse with Reformed commentary (Matthew Henry first, then JFB, Gill, Calvin, K&D, and Tyndale as a concise modern fallback).",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
@@ -29,7 +29,7 @@
       {
         "key": "commentary",
         "type": "string",
-        "label": "Preferred commentary: matthew-henry, jamieson-fausset-brown, john-gill, john-calvin, keil-delitzsch"
+        "label": "Preferred commentary: matthew-henry, jamieson-fausset-brown, john-gill, john-calvin, keil-delitzsch, tyndale"
       }
     ]
   },
@@ -39,16 +39,18 @@
       "jamieson-fausset-brown",
       "john-gill",
       "john-calvin",
-      "keil-delitzsch"
+      "keil-delitzsch",
+      "tyndale"
     ],
-    "commentaryPolicy": "Reformed/Lutheran and adjacent only. Excludes adam-clarke and tyndale.",
+    "commentaryPolicy": "Reformed / Lutheran / adjacent sources first, with Tyndale Open Study Notes (modern, concise, CC BY-SA 4.0) as the final fallback and as an explicit choice. Excludes adam-clarke.",
     "verseApi": "https://bible.helloao.org",
     "fallbackOrder": [
       "matthew-henry",
       "jamieson-fausset-brown",
       "john-gill",
       "john-calvin",
-      "keil-delitzsch"
+      "keil-delitzsch",
+      "tyndale"
     ]
   }
 }
